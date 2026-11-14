@@ -1,0 +1,236 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOS Emergency System</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f5f9;
+            text-align: center;
+            padding: 25px;
+        }
+
+        .container {
+            max-width: 420px;
+            margin: 20px auto;
+            padding: 25px;
+            background: white;
+            border-radius: 18px;
+            box-shadow: 0 4px 15px #0002;
+        }
+
+        h1 { color: #c62828; }
+
+        .sos {
+            width: 175px;
+            height: 175px;
+            border-radius: 50%;
+            border: 8px solid #ffcdd2;
+            background: #d50000;
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 25px;
+        }
+
+        button:not(.sos) {
+            width: 100%;
+            padding: 13px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 8px;
+            background: #1565c0;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        input {
+            width: 90%;
+            padding: 12px;
+            margin: 8px;
+        }
+
+        #status { color: #333; }
+        #mapLink { display: block; margin: 15px; }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <h1>🆘 SOS Emergency</h1>
+    <p>Press SOS in an emergency.</p>
+
+    <button class="sos" onclick="sendSOS()">SOS</button>
+
+    <p id="status">Location not started.</p>
+    <p id="coordinates">Waiting for GPS...</p>
+    <a id="mapLink" target="_blank" rel="noopener"></a>
+
+    <hr>
+
+    <h3>Family Contact</h3>
+    <input id="phone"
+           type="tel"
+           placeholder="WhatsApp number with country code">
+
+    <button onclick="startTracking()">
+        Start Live Location
+    </button>
+
+    <button onclick="shareLocation()">
+        Share Location with Family
+    </button>
+
+    <p id="result"></p>
+</div>
+
+<script>
+    let currentLocation = null;
+    let watchId = null;
+
+    function startTracking() {
+        if (!navigator.geolocation) {
+            document.getElementById("status").textContent =
+                "GPS is not supported by this browser.";
+            return;
+        }
+
+        if (watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+        }
+
+        document.getElementById("status").textContent =
+            "Requesting location permission...";
+
+        watchId = navigator.geolocation.watchPosition(
+            async function(position) {
+                currentLocation = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                };
+
+                document.getElementById("coordinates").textContent =
+                    "Latitude: " + currentLocation.latitude.toFixed(6) +
+                    " | Longitude: " +
+                    currentLocation.longitude.toFixed(6);
+
+                const mapUrl =
+                    "https://www.google.com/maps?q=" +
+                    currentLocation.latitude + "," +
+                    currentLocation.longitude;
+
+                const link = document.getElementById("mapLink");
+                link.href = mapUrl;
+                link.textContent = "View my location on Google Maps";
+
+                document.getElementById("status").textContent =
+                    "GPS active. Location updates while tracking is enabled.";
+
+                try {
+                    await fetch("/api/location", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(currentLocation)
+                    });
+                } catch (error) {
+                    console.error("Location update failed:", error);
+                }
+            },
+            function(error) {
+                document.getElementById("status").textContent =
+                    "Location unavailable. Allow GPS and try again.";
+            },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 15000
+            }
+        );
+    }
+
+    async function sendSOS() {
+        if (!currentLocation) {
+            document.getElementById("result").textContent =
+                "Please start location tracking first.";
+            return;
+        }
+
+        try {
+            const response = await fetch("/api/sos", {
+                method: "POST"
+            });
+
+            if (!response.ok) {
+                throw new Error("SOS request failed");
+            }
+
+            const phone = document.getElementById("phone")
+                .value.replace(/\D/g, "");
+
+            const mapUrl =
+                "https://www.google.com/maps?q=" +
+                currentLocation.latitude + "," +
+                currentLocation.longitude;
+
+            const message =
+                "SOS! I need help. My current location is: " +
+                mapUrl;
+
+            document.getElementById("result").textContent =
+                "SOS recorded by the server.";
+
+            if (phone) {
+                const whatsappUrl =
+                    "https://wa.me/" + phone +
+                    "?text=" + encodeURIComponent(message);
+
+                window.open(whatsappUrl, "_blank");
+            } else {
+                alert("SOS recorded. Add a family WhatsApp number " +
+                      "to prepare a location message.");
+            }
+        } catch (error) {
+            document.getElementById("result").textContent =
+                "Could not contact the server. Try again.";
+        }
+    }
+
+    function shareLocation() {
+        if (!currentLocation) {
+            alert("Start location tracking first.");
+            return;
+        }
+
+        const phone = document.getElementById("phone")
+            .value.replace(/\D/g, "");
+
+        if (!phone) {
+            alert("Enter the family WhatsApp number with country code.");
+            return;
+        }
+
+        const mapUrl =
+            "https://www.google.com/maps?q=" +
+            currentLocation.latitude + "," +
+            currentLocation.longitude;
+
+        const message =
+            "My current location: " + mapUrl;
+
+        window.open(
+            "https://wa.me/" + phone +
+            "?text=" + encodeURIComponent(message),
+            "_blank"
+        );
+    }
+</script>
+</body>
+</html>
